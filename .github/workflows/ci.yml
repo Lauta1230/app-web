@@ -61,8 +61,17 @@ jobs:
       - name: Validate standalone SQL deployment on the empty stack
         shell: bash
         run: |
-          set -euo pipefail
-          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -v ON_ERROR_STOP=1 -f supabase/deploy/REMOTE_DEPLOY.sql
+          set -o pipefail
+          set +e
+          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -v ON_ERROR_STOP=1 -f supabase/deploy/REMOTE_DEPLOY.sql 2>&1 | tee /tmp/standalone-deploy.log
+          status=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/standalone-deploy.log >> "$GITHUB_STEP_SUMMARY"
+          if (( status != 0 )); then
+            summary=$(tr '\n' ' ' < /tmp/standalone-deploy.log | cut -c1-6000)
+            echo "::error title=Standalone deployment SQL output::$summary"
+            exit "$status"
+          fi
           supabase test db --local
       - name: Assert standalone deployment objects exist
         shell: bash
