@@ -57,7 +57,18 @@ jobs:
         with:
           version: latest
       - name: Start an empty local Supabase stack
-        run: supabase start
+        shell: bash
+        run: |
+          # `supabase start` applies repository migrations on a fresh volume. Temporarily
+          # move them aside so the standalone SQL is exercised against only Supabase's
+          # platform schemas (auth/storage), then restore them for the migration test.
+          set -euo pipefail
+          workdir=$(mktemp -d)
+          mv supabase/migrations "$workdir/migrations"
+          trap 'if [[ -d "$workdir/migrations" ]]; then mv "$workdir/migrations" supabase/migrations; fi' EXIT
+          supabase start
+          mv "$workdir/migrations" supabase/migrations
+          trap - EXIT
       - name: Validate standalone SQL deployment on the empty stack
         shell: bash
         run: |
