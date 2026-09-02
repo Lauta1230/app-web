@@ -33,18 +33,95 @@ jobs:
         run: grep -q 'enable row level security' supabase/migrations/202609020001_initial_schema.sql
       - name: Reject permissive Edge Function CORS
         run: "! grep -R -nE 'Access-Control-Allow-Origin.*\\*' supabase/functions"
+      - name: Verify standalone deploy script has no secret configuration
+        run: "! grep -nE 'GEMINI_API_KEY|SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ACCESS_TOKEN|SUPABASE_DB_PASSWORD' supabase/deploy/REMOTE_DEPLOY.sql"
+      - name: Verify standalone deploy script renders both ordered migrations
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          deploy = Path('supabase/deploy/REMOTE_DEPLOY.sql').read_text()
+          initial = Path('supabase/migrations/202609020001_initial_schema.sql').read_text()
+          hardening = Path('supabase/migrations/202609020002_security_integrity.sql').read_text()
+          assert initial in deploy, 'Initial schema migration is not fully rendered in deployment SQL.'
+          assert hardening in deploy, 'P0/P1 hardening migration is not fully rendered in deployment SQL.'
+          assert deploy.index(initial) < deploy.index(hardening), 'Migrations are in the wrong deployment order.'
+          print('Standalone deployment SQL contains both migrations in order.')
+          PY
 
   database-security:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      - name: Start local Supabase stack and apply migrations
-        run: supabase start && supabase db reset --local
-      - name: Exercise RLS and atomic XP protections
+      - name: Start an empty local Supabase stack
+        run: supabase start
+      - name: Validate standalone SQL deployment on the empty stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -v ON_ERROR_STOP=1 -f supabase/deploy/REMOTE_DEPLOY.sql
+          supabase test db --local
+      - name: Assert standalone deployment objects exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -v ON_ERROR_STOP=1 <<'SQL'
+          do $$
+          declare
+            expected_policy record;
+          begin
+            if (select count(*) from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relrowsecurity) <> 24 then
+              raise exception 'Expected RLS on all 24 Companion Study public tables';
+            end if;
+            if exists (
+              select 1 from unnest(array[
+                'public.award_xp_internal(uuid,public.xp_source,uuid,integer,text)',
+                'public.check_achievements_internal(uuid)',
+                'public.complete_task_atomic(uuid,uuid)',
+                'public.complete_study_session_atomic(uuid,uuid,timestamp with time zone,integer,public.study_mode)',
+                'public.save_exam_atomic(uuid,uuid,text,uuid,timestamp with time zone,numeric,numeric,numeric,text)',
+                'public.award_xp_for_verified_event_atomic(uuid,public.xp_source,uuid)',
+                'public.submit_quiz_atomic(uuid,uuid,jsonb)'
+              ]) signature
+              where to_regprocedure(signature) is null
+            ) then
+              raise exception 'Expected XP/atomic RPC is missing';
+            end if;
+            for expected_policy in
+              select * from (values
+                ('public', 'profiles', 'profile owner'),
+                ('public', 'subjects', 'subject owner'),
+                ('public', 'documents', 'document owner'),
+                ('public', 'tasks', 'task owner'),
+                ('public', 'exams', 'exam owner'),
+                ('public', 'attendance_records', 'attendance owner'),
+                ('public', 'quizzes', 'quiz owner'),
+                ('public', 'xp_transactions', 'xp readable own'),
+                ('public', 'notifications', 'notification read own'),
+                ('storage', 'objects', 'private files select own folder'),
+                ('storage', 'objects', 'private files insert own folder'),
+                ('storage', 'objects', 'private files update own folder'),
+                ('storage', 'objects', 'private files delete own folder')
+              ) as policies(schema_name, table_name, policy_name)
+            loop
+              if not exists (
+                select 1 from pg_policies
+                where schemaname = expected_policy.schema_name
+                  and tablename = expected_policy.table_name
+                  and policyname = expected_policy.policy_name
+              ) then
+                raise exception 'Missing RLS policy %.%.%', expected_policy.schema_name, expected_policy.table_name, expected_policy.policy_name;
+              end if;
+            end loop;
+          end;
+          $$;
+          SQL
+      - name: Reset local database and apply migrations in normal order
+        run: supabase db reset --local
+      - name: Exercise RLS and atomic XP protections through migrations
         shell: bash
         run: |
           set -o pipefail
