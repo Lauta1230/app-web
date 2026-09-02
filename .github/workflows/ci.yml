@@ -1,0 +1,33 @@
+name: Quality
+
+on:
+  push:
+    branches: [main, arena/01a06424-app-web]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+
+  migration-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject committed frontend secrets
+        run: |
+          ! grep -R --include='*.ts' --include='*.tsx' --include='*.js' -nE 'VITE_GEMINI_API_KEY|SUPABASE_SERVICE_ROLE_KEY|GEMINI_API_KEY' src || exit 1
+      - name: Confirm schema has row-level security
+        run: grep -q 'enable row level security' supabase/migrations/202609020001_initial_schema.sql

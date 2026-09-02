@@ -1,0 +1,48 @@
+project_id = "companion-study"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/reset-password"]
+
+[storage]
+enabled = true
+file_size_limit = "10MiB"
+
+[functions.ai-chat]
+verify_jwt = false
+[functions.ai-quiz]
+verify_jwt = false
+[functions.submit-quiz]
+verify_jwt = false
+[functions.award-xp]
+verify_jwt = false
+[functions.ocr-document]
+verify_jwt = false
+[functions.complete-task]
+verify_jwt = false
+[functions.complete-study-session]
+verify_jwt = false
+[functions.process-document]
+verify_jwt = false
+[functions.humanize-text]
+verify_jwt = false
+[functions.analyze-ai-text]
+verify_jwt = false
+[functions.study-recommendation]
+verify_jwt = false
+[functions.process-exam]
+verify_jwt = false
+[functions.pet-care]
+verify_jwt = false
+[functions.dashboard]
+verify_jwt = false
+[functions.notifications]
+verify_jwt = false

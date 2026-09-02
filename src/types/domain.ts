@@ -1,0 +1,15 @@
+export type EducationLevel = 'secondary' | 'university' | 'tertiary' | 'other'
+export type AIPersonality = 'teacher' | 'companion' | 'teen' | 'simple'
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type TaskStatus = 'pending' | 'completed' | 'cancelled'
+export type Subject = { id: string; name: string; color: string; icon: string; description: string | null; archived_at: string | null; created_at: string }
+export type Task = { id: string; title: string; description: string | null; status: TaskStatus; priority: TaskPriority; due_at: string | null; subject_id: string | null; completed_at: string | null; subjects?: Pick<Subject, 'name' | 'color'> | null }
+export type Note = { id: string; title: string; content: string; is_favorite: boolean; subject_id: string | null; updated_at: string; subjects?: Pick<Subject, 'name' | 'color'> | null }
+export type Exam = { id: string; title: string; subject_id: string | null; scheduled_at: string | null; grade: number | null; max_grade: number | null; passing_percentage: number; percentage: number | null; status: 'pending' | 'passed' | 'failed'; notes: string | null; subjects?: Pick<Subject, 'name' | 'color'> | null }
+export type CalendarEvent = { id: string; title: string; event_type: 'task' | 'exam' | 'class' | 'study' | 'reminder' | 'other'; starts_at: string; duration_minutes: number; reminder_minutes: number | null; subject_id: string | null; notes: string | null; subjects?: Pick<Subject, 'name' | 'color'> | null }
+export type Pet = { id: string; species: 'cat' | 'dog' | 'fox' | 'owl'; name: string; level: number; happiness: number; energy: number }
+export type DashboardData = { profile: { display_name: string | null; onboarding_completed: boolean } | null; streak: { current_streak: number; longest_streak: number }; level: { id: number; name: string; min_xp: number; xp: number; next_level?: { id: number; name: string; min_xp: number } | null }; pet: Pet | null; today: { tasks: Task[]; events: CalendarEvent[]; study_sessions: StudySession[] }; upcoming_exams: Exam[]; recommendation: StudyRecommendation | null; recent_activity: Array<{ id: string; title: string; status: TaskStatus; completed_at: string | null; updated_at: string }> }
+export type StudyRecommendation = { subject_id: string | null; subject_name: string | null; topic: string; duration_minutes: number; reason: string; action: string }
+export type StudySession = { id: string; subject_id: string | null; started_at: string; ended_at: string | null; duration_seconds: number; mode: 'free_study' | 'ai_tutor' | 'quiz' | 'flashcards' | 'voice' | 'review'; completed: boolean }
+export type Attendance = { id: string; subject_id: string | null; attendance_date: string; morning_status: 'present' | 'absent' | 'justified' | 'not_recorded'; afternoon_status: 'present' | 'absent' | 'justified' | 'not_recorded'; notes: string | null; subjects?: Pick<Subject, 'name'> | null }
+export type QuizQuestion = { id: string; position: number; question_type: string; prompt: string; options: string[] | null }
