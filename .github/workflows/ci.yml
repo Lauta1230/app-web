@@ -31,3 +31,18 @@ jobs:
           ! grep -R --include='*.ts' --include='*.tsx' --include='*.js' -nE 'VITE_GEMINI_API_KEY|SUPABASE_SERVICE_ROLE_KEY|GEMINI_API_KEY' src || exit 1
       - name: Confirm schema has row-level security
         run: grep -q 'enable row level security' supabase/migrations/202609020001_initial_schema.sql
+      - name: Reject permissive Edge Function CORS
+        run: "! grep -R -nE 'Access-Control-Allow-Origin.*\\*' supabase/functions"
+
+  database-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start local Supabase stack and apply migrations
+        run: supabase start && supabase db reset --local
+      - name: Exercise RLS and atomic XP protections
+        run: supabase test db --local

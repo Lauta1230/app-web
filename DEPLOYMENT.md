@@ -2,14 +2,18 @@
 
 ## Checklist de entorno gratuito
 
-1. Crear proyectos gratuitos de Supabase y Google AI Studio/Gemini. **No habilitar billing ni asociar una tarjeta.**
-2. Aplicar el esquema: `supabase link --project-ref ... && supabase db push`.
-3. Configurar Supabase Auth: Site URL, redirect de recuperación y confirmación de email según el entorno.
-4. Configurar secretos de funciones: `supabase secrets set GEMINI_API_KEY=...`.
-5. Desplegar todas las Edge Functions desde README.
-6. En el host del frontend, definir sólo `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
-7. Ejecutar `npm run lint && npm run test && npm run build`.
-8. Servir `dist/` bajo HTTPS y probar instalación PWA, login, refresh de sesión y logout.
+1. Crear o identificar el proyecto gratuito correcto de Supabase. **No habilitar billing ni asociar una tarjeta.**
+2. Confirmar el project ref e historial remoto; nunca ejecutar migraciones sobre un proyecto no identificado. Respaldar los datos según la operación disponible.
+3. En una pila local efímera, ejecutar `supabase start && supabase db reset --local && supabase test db --local`. La suite cubre RLS A/B y transacciones críticas.
+4. Sólo después de esa revisión, enlazar el proyecto y aplicar el esquema: `supabase link --project-ref ... && supabase db push`.
+5. Configurar Supabase Auth: Site URL, redirect de recuperación y confirmación de email según el entorno.
+6. Configurar el secreto de Functions `FRONTEND_ORIGIN` con el origen HTTPS exacto de la aplicación. No usar wildcard ni configurarlo como variable `VITE_*`.
+7. Desplegar las 15 Edge Functions desde README y comprobar cada una con un JWT de cuenta de prueba.
+8. En el host del frontend, definir sólo `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
+9. Ejecutar `npm run lint && npm run test && npm run build`.
+10. Servir `dist/` bajo HTTPS y probar instalación PWA, login, refresh de sesión y logout.
+
+La configuración de Gemini no forma parte de este procedimiento de endurecimiento. Si se autoriza en una fase posterior, `GEMINI_API_KEY` debe existir sólo como secreto de Edge Functions, sin billing ni exposición al navegador.
 
 ## Edge Functions
 

@@ -1,7 +1,13 @@
+// Configure FRONTEND_ORIGIN as an Edge Function secret in production, for example
+// https://app.example.com. The local fallback is intentionally limited to Vite dev.
+const frontendOrigin = Deno.env.get('FRONTEND_ORIGIN')?.trim() || 'http://localhost:5173'
+
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': frontendOrigin,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Credentials': 'true',
+  'Vary': 'Origin',
   'Content-Type': 'application/json; charset=utf-8',
 }
 

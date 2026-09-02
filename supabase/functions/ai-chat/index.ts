@@ -39,7 +39,7 @@ Deno.serve(async (request) => {
     const { error: messageError } = await auth.admin.from('ai_messages').insert({ conversation_id: conversationId, role: 'assistant', content: answer })
     if (messageError) throw messageError
     await auth.admin.from('ai_conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId)
-    await auth.admin.rpc('award_xp_internal', { p_user_id: auth.user.id, p_source: 'study_session_completed', p_source_id: conversationId, p_amount: 10, p_description: 'Primera interacción de estudio con IA' })
+    await auth.admin.rpc('award_xp_internal', { p_user_id: auth.user.id, p_source: 'daily_goal_completed', p_source_id: conversationId, p_amount: 10, p_description: 'Primera interacción de estudio con IA' })
     return ok({ conversation_id: conversationId, message: answer })
   } catch (error) {
     if (error instanceof Error && error.message === 'AI_UNAVAILABLE') return fail('AI_UNAVAILABLE', 'La IA no está disponible en este momento. Podés seguir estudiando con tus apuntes y tareas.', 503)

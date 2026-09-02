@@ -32,7 +32,7 @@ export const tasksApi = {
   async create(userId: string, payload: Pick<Task, 'title' | 'description' | 'priority' | 'due_at' | 'subject_id'>): Promise<Task> { ready(); const { data, error } = await supabase.from('tasks').insert({ ...payload, user_id: userId }).select().single(); check(error); return data as Task },
   async update(id: string, payload: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'due_at' | 'subject_id' | 'status' | 'completed_at'>>): Promise<Task> { ready(); const { data, error } = await supabase.from('tasks').update(payload).eq('id', id).select().single(); check(error); return data as Task },
   async remove(id: string): Promise<void> { ready(); const { error } = await supabase.from('tasks').delete().eq('id', id); check(error) },
-  async complete(id: string): Promise<{ task: Task; xp: number }> { const data = await invoke<{ task: Task; xp_awarded: number }>('complete-task', { task_id: id }); return { task: data.task, xp: data.xp_awarded } }
+  async complete(id: string): Promise<{ xp: number }> { const data = await invoke<{ task_id: string; xp_awarded: number }>('complete-task', { task_id: id }); return { xp: data.xp_awarded } }
 }
 
 export const eventsApi = {
@@ -41,12 +41,16 @@ export const eventsApi = {
   async remove(id: string): Promise<void> { ready(); const { error } = await supabase.from('calendar_events').delete().eq('id', id); check(error) }
 }
 
+type ExamPayload = Omit<Exam, 'id' | 'percentage' | 'status' | 'subjects'>
+async function saveExam(payload: ExamPayload & { exam_id?: string }): Promise<Exam> {
+  const result = await invoke<{ exam: Exam }>('process-exam', { action: 'save', ...payload })
+  return result.exam
+}
 export const examsApi = {
   async list(): Promise<Exam[]> { ready(); const { data, error } = await supabase.from('exams').select('id,title,subject_id,scheduled_at,grade,max_grade,passing_percentage,percentage,status,notes,subjects(name,color)').order('scheduled_at', { ascending: true, nullsFirst: false }); check(error); return (data ?? []) as unknown as Exam[] },
-  async create(userId: string, payload: Omit<Exam, 'id' | 'percentage' | 'status' | 'subjects'>): Promise<Exam> { ready(); const { data, error } = await supabase.from('exams').insert({ ...payload, user_id: userId }).select().single(); check(error); return data as Exam },
-  async update(id: string, payload: Partial<Omit<Exam, 'id' | 'percentage' | 'status' | 'subjects'>>): Promise<Exam> { ready(); const { data, error } = await supabase.from('exams').update(payload).eq('id', id).select().single(); check(error); return data as Exam },
-  async remove(id: string): Promise<void> { ready(); const { error } = await supabase.from('exams').delete().eq('id', id); check(error) },
-  async process(id: string): Promise<void> { await invoke('process-exam', { exam_id: id }) }
+  async create(payload: ExamPayload): Promise<Exam> { return saveExam(payload) },
+  async update(id: string, payload: ExamPayload): Promise<Exam> { return saveExam({ ...payload, exam_id: id }) },
+  async remove(id: string): Promise<void> { ready(); const { error } = await supabase.from('exams').delete().eq('id', id); check(error) }
 }
 
 export const attendanceApi = {
@@ -63,5 +67,5 @@ export const appApi = {
   analyzeText: (text: string) => invoke<{ summary: string; signals: Array<{ label: string; detail: string; level: string }>; suggestions: string[]; disclaimer: string }>('analyze-ai-text', { text }),
   createQuiz: (body: { subject_id: string; topic: string; difficulty: string; question_count: number; source_text?: string }) => invoke<{ quiz_id: string; title: string; difficulty: string; questions: QuizQuestion[] }>('ai-quiz', body),
   submitQuiz: (quizId: string, answers: Array<{ question_id: string; answer: string }>) => invoke<{ score: number; correct_answers: number; question_count: number; xp_awarded: number; answers: Array<{ question_id: string; is_correct: boolean; feedback: string }> }>('submit-quiz', { quiz_id: quizId, answers }),
-  completeStudySession: (body: { started_at: string; duration_seconds: number; mode: string; subject_id?: string | null }) => invoke<{ session: { id: string }; xp_awarded: number }>('complete-study-session', body)
+  completeStudySession: (body: { started_at: string; duration_seconds: number; mode: string; subject_id?: string | null }) => invoke<{ session_id: string; xp_awarded: number }>('complete-study-session', body)
 }

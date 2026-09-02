@@ -14,7 +14,11 @@
 
 ## Ownership
 
-Cada función llama `requireUser`, que verifica el JWT ante Supabase Auth. Antes de modificar un recurso filtra por el `user_id` del JWT. La service role es únicamente un mecanismo de servidor para leer keys de quiz o archivos privados tras esa verificación; no es un bypass de producto.
+Cada función llama `requireUser`, que verifica el JWT ante Supabase Auth. Antes de modificar un recurso filtra por el `user_id` del JWT. La service role es únicamente un mecanismo de servidor para leer keys de quiz o archivos privados tras esa verificación; no es un bypass de producto. Las mutaciones de tareas, sesiones, evaluaciones, quizzes y XP se delegan a RPCs transaccionales que vuelven a validar ownership dentro de PostgreSQL.
+
+## CORS
+
+`_shared/http.ts` responde sólo con el origen exacto de `FRONTEND_ORIGIN` y permite credenciales; no usa `Access-Control-Allow-Origin: *`. El único fallback es `http://localhost:5173` para desarrollo local. Configurá el secreto antes de cualquier despliegue de producción.
 
 ## Datos de entrada
 
@@ -35,5 +39,5 @@ Storage es privado y su RLS exige prefijo de UUID. OCR vuelve a comprobar owners
 - Usar HTTPS en producción.
 - Configurar redirect URLs exactas en Supabase Auth.
 - Mantener dependencias actualizadas y revisar `npm audit` antes de desplegar.
-- Ejecutar la prueba de RLS con dos usuarios reales en CI.
+- Ejecutar la suite pgTAP A/B en CI/local y, antes del lanzamiento, la misma matriz con dos cuentas de prueba reales en el proyecto remoto identificado.
 - No habilitar billing automáticamente por un error de rate limit: devolver el error seguro y permitir que la persona continúe con el resto de la app.

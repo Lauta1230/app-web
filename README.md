@@ -31,8 +31,8 @@ No uses `VITE_GEMINI_API_KEY`: no existe ni debe existir. Sin las dos variables 
 2. En **Authentication → URL Configuration**, configurá el Site URL y agregá `http://localhost:5173/reset-password` (y la URL de producción) como redirect URL.
 3. Instalá Supabase CLI e iniciá sesión: `supabase login`.
 4. Enlazá el proyecto: `supabase link --project-ref TU_PROJECT_REF`.
-5. Aplicá la migración: `supabase db push`.
-6. Desplegá las funciones listadas más abajo.
+5. Antes de aplicar cambios, confirmá que el proyecto enlazado es el correcto, revisá el historial de migraciones y ejecutá `supabase start && supabase db reset && supabase test db --local`. Luego aplicá las migraciones ordenadas con `supabase db push`.
+6. Desplegá las funciones listadas más abajo y verificá cada endpoint autenticado.
 
 La migración crea buckets privados `documents`, `avatars` y `audio`; no hace falta crearlos manualmente. Sus políticas exigen que el primer segmento de la ruta sea el UUID de quien sube el archivo.
 
@@ -41,12 +41,13 @@ La migración crea buckets privados `documents`, `avatars` y `audio`; no hace fa
 Nunca pongas estos valores en `.env` frontend, Git ni la base:
 
 ```bash
-supabase secrets set GEMINI_API_KEY=TU_KEY_GRATUITA
+# Origen HTTPS exacto del frontend, sin barra final ni wildcard.
+supabase secrets set FRONTEND_ORIGIN=https://tu-dominio.example
 # SUPABASE_URL, SUPABASE_ANON_KEY y SUPABASE_SERVICE_ROLE_KEY son inyectados/disponibles
 # para funciones desplegadas. Para `supabase functions serve`, configurarlos como secretos locales.
 ```
 
-Creá la clave de Gemini en Google AI Studio y mantené el proyecto en el tier gratuito. Si llega un `429`, la UI recibe `AI_RATE_LIMIT` y el resto de la aplicación sigue usable.
+`FRONTEND_ORIGIN` es obligatorio antes de desplegar a producción: las funciones no aceptan CORS wildcard y el único fallback es `http://localhost:5173`. La configuración de Gemini se mantiene separada y sólo puede autorizarse cuando corresponda; nunca se incluye una key en el frontend. Si llega un `429`, la UI recibe `AI_RATE_LIMIT` y el resto de la aplicación sigue usable.
 
 ### 4. Desplegar funciones
 
@@ -62,7 +63,7 @@ done
 
 ## Validación
 
-GitHub Actions (`.github/workflows/ci.yml`) ejecuta lint, tests, build y una verificación básica de secretos/RLS en cada PR y push de esta rama.
+GitHub Actions (`.github/workflows/ci.yml`) ejecuta lint, tests y build; además inicia una pila Supabase efímera, aplica las migraciones y ejecuta la suite pgTAP de RLS/atomicidad en cada PR y push de esta rama.
 
 ```
 npm run lint
@@ -70,7 +71,7 @@ npm run test
 npm run build
 ```
 
-`supabase/tests/rls.sql` documenta la regresión mínima que debe ejecutarse en CI/local con usuarios A y B reales. Antes de publicar, agregá una suite pgTAP con UUIDs creados por el harness del entorno.
+La suite pgTAP `supabase/tests/database/security_rls.test.sql` usa cuentas A/B efímeras para verificar aislamiento de tablas y Storage, FKs cross-user, privilegios y reintentos idempotentes. Ejecutala en local/CI con `supabase test db --local`; las pruebas A/B contra producción sólo se realizan con autorización explícita, cuentas de prueba y el proyecto correctamente identificado.
 
 ## PWA y APK futuro
 
