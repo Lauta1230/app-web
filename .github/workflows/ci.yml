@@ -45,4 +45,12 @@ jobs:
       - name: Start local Supabase stack and apply migrations
         run: supabase start && supabase db reset --local
       - name: Exercise RLS and atomic XP protections
-        run: supabase test db --local
+        shell: bash
+        run: |
+          set -o pipefail
+          set +e
+          supabase test db --local 2>&1 | tee /tmp/database-security.log
+          status=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/database-security.log >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
