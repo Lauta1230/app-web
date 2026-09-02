@@ -27,10 +27,11 @@ export const notesApi = {
   async remove(id: string): Promise<void> { ready(); const { error } = await supabase.from('notes').delete().eq('id', id); check(error) }
 }
 
+type TaskPayload = Pick<Task, 'title' | 'description' | 'priority' | 'due_at' | 'subject_id'>
 export const tasksApi = {
   async list(): Promise<Task[]> { ready(); const { data, error } = await supabase.from('tasks').select('id,title,description,status,priority,due_at,subject_id,completed_at,subjects(name,color)').order('due_at', { ascending: true, nullsFirst: false }); check(error); return (data ?? []) as unknown as Task[] },
-  async create(userId: string, payload: Pick<Task, 'title' | 'description' | 'priority' | 'due_at' | 'subject_id'>): Promise<Task> { ready(); const { data, error } = await supabase.from('tasks').insert({ ...payload, user_id: userId }).select().single(); check(error); return data as Task },
-  async update(id: string, payload: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'due_at' | 'subject_id' | 'status' | 'completed_at'>>): Promise<Task> { ready(); const { data, error } = await supabase.from('tasks').update(payload).eq('id', id).select().single(); check(error); return data as Task },
+  async create(payload: TaskPayload): Promise<Task> { ready(); const { data, error } = await supabase.rpc('create_task_atomic', { p_subject_id: payload.subject_id, p_title: payload.title, p_description: payload.description, p_priority: payload.priority, p_due_at: payload.due_at }); check(error); return data as unknown as Task },
+  async update(id: string, payload: Partial<TaskPayload>): Promise<Task> { ready(); const { data, error } = await supabase.from('tasks').update(payload).eq('id', id).select().single(); check(error); return data as Task },
   async remove(id: string): Promise<void> { ready(); const { error } = await supabase.from('tasks').delete().eq('id', id); check(error) },
   async complete(id: string): Promise<{ xp: number }> { const data = await invoke<{ task_id: string; xp_awarded: number }>('complete-task', { task_id: id }); return { xp: data.xp_awarded } }
 }

@@ -99,6 +99,7 @@ jobs:
             if exists (
               select 1 from unnest(array[
                 'public.award_xp_internal(uuid,public.xp_source,uuid,integer,text)',
+                'public.create_task_atomic(uuid,text,text,public.task_priority,timestamp with time zone)',
                 'public.check_achievements_internal(uuid)',
                 'public.complete_task_atomic(uuid,uuid)',
                 'public.complete_study_session_atomic(uuid,uuid,timestamp with time zone,integer,public.study_mode)',

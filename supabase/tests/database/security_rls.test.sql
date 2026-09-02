@@ -1,5 +1,5 @@
 begin;
-select plan(37);
+select plan(55);
 
 -- Seed two real auth identities. The profile/streak trigger from the migration creates
 -- their tenant roots; all test data remains inside this transaction and is rolled back.
@@ -23,17 +23,27 @@ insert into public.tasks (id, user_id, subject_id, title) values
 insert into public.ai_conversations (id, user_id, subject_id, note_id, title) values
  ('aaaaaaa7-aaaa-4aaa-8aaa-aaaaaaaaaaa7', '11111111-1111-4111-8111-111111111111', 'aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'aaaaaaa4-aaaa-4aaa-8aaa-aaaaaaaaaaa4', 'Conversación de A');
 insert into public.quizzes (id, user_id, subject_id, title, status) values
- ('aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8', '11111111-1111-4111-8111-111111111111', 'aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'Quiz de A', 'active');
+ ('aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8', '11111111-1111-4111-8111-111111111111', 'aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'Quiz de A', 'active'),
+ ('aaaaaac1-aaaa-4aaa-8aaa-aaaaaaaaaac1', '11111111-1111-4111-8111-111111111111', 'aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'Quiz sin answer key', 'active'),
+ ('aaaaaac2-aaaa-4aaa-8aaa-aaaaaaaaaac2', '11111111-1111-4111-8111-111111111111', 'aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'Quiz con answer keys incompletas', 'active'),
+ ('aaaaaac3-aaaa-4aaa-8aaa-aaaaaaaaaac3', '11111111-1111-4111-8111-111111111111', 'aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'Otro quiz de A', 'active');
 insert into public.quiz_questions (id, quiz_id, position, question_type, prompt, options) values
  ('aaaaaaa9-aaaa-4aaa-8aaa-aaaaaaaaaaa9', 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8', 1, 'multiple_choice', 'Pregunta privada 1', '["Correcta","Incorrecta","Otra","Más"]'::jsonb),
- ('aaaaaab0-aaaa-4aaa-8aaa-aaaaaaaaaab0', 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8', 2, 'multiple_choice', 'Pregunta privada 2', '["Correcta","Incorrecta","Otra","Más"]'::jsonb);
+ ('aaaaaab0-aaaa-4aaa-8aaa-aaaaaaaaaab0', 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8', 2, 'multiple_choice', 'Pregunta privada 2', '["Correcta","Incorrecta","Otra","Más"]'::jsonb),
+ ('aaaaaab1-aaaa-4aaa-8aaa-aaaaaaaaaab1', 'aaaaaac1-aaaa-4aaa-8aaa-aaaaaaaaaac1', 1, 'multiple_choice', 'Pregunta sin clave', '["Correcta","Incorrecta"]'::jsonb),
+ ('aaaaaab2-aaaa-4aaa-8aaa-aaaaaaaaaab2', 'aaaaaac2-aaaa-4aaa-8aaa-aaaaaaaaaac2', 1, 'multiple_choice', 'Pregunta con clave', '["Correcta","Incorrecta"]'::jsonb),
+ ('aaaaaab3-aaaa-4aaa-8aaa-aaaaaaaaaab3', 'aaaaaac2-aaaa-4aaa-8aaa-aaaaaaaaaac2', 2, 'multiple_choice', 'Pregunta sin clave parcial', '["Correcta","Incorrecta"]'::jsonb),
+ ('aaaaaab4-aaaa-4aaa-8aaa-aaaaaaaaaab4', 'aaaaaac3-aaaa-4aaa-8aaa-aaaaaaaaaac3', 1, 'multiple_choice', 'Pregunta de otro quiz', '["Correcta","Incorrecta"]'::jsonb);
 insert into public.quiz_answer_keys(question_id, accepted_answers) values
  ('aaaaaaa9-aaaa-4aaa-8aaa-aaaaaaaaaaa9', '["A"]'::jsonb),
- ('aaaaaab0-aaaa-4aaa-8aaa-aaaaaaaaaab0', '["A"]'::jsonb);
+ ('aaaaaab0-aaaa-4aaa-8aaa-aaaaaaaaaab0', '["A"]'::jsonb),
+ ('aaaaaab2-aaaa-4aaa-8aaa-aaaaaaaaaab2', '["A"]'::jsonb),
+ ('aaaaaab4-aaaa-4aaa-8aaa-aaaaaaaaaab4', '["A"]'::jsonb);
 insert into public.xp_transactions (id, user_id, source, source_id, amount) values
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'daily_goal_completed', 'aaaaaaa0-aaaa-4aaa-8aaa-aaaaaaaaaaa0', 10);
 insert into public.notifications (id, user_id, title, body) values
  ('aaaaaaab-aaaa-4aaa-8aaa-aaaaaaaaaaab', '11111111-1111-4111-8111-111111111111', 'Privada', 'Sólo A puede verla');
+insert into storage.buckets (id, name, public) values ('disallowed-test', 'disallowed-test', false);
 insert into storage.objects (bucket_id, name, owner_id) values
  ('documents', '11111111-1111-4111-8111-111111111111/aaaaaaa5/documento.txt', '11111111-1111-4111-8111-111111111111');
 
@@ -44,7 +54,7 @@ select is((select count(*)::integer from public.subjects), 1, 'A only reads A su
 select is((select count(*)::integer from public.notes), 1, 'A only reads A notes');
 select is((select count(*)::integer from public.documents), 1, 'A only reads A documents');
 select is((select count(*)::integer from public.ai_conversations), 1, 'A only reads A conversations');
-select is((select count(*)::integer from public.quizzes), 1, 'A only reads A quizzes');
+select is((select count(*)::integer from public.quizzes), 4, 'A only reads A quizzes');
 select is((select count(*)::integer from public.xp_transactions), 1, 'A only reads A XP ledger');
 select is((select count(*)::integer from public.pets), 1, 'A only reads A pet');
 select is((select count(*)::integer from storage.objects where bucket_id = 'documents'), 1, 'A only reads objects in A folder');
@@ -84,6 +94,19 @@ select throws_ok(
   'Authenticated clients cannot insert arbitrary XP'
 );
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+select lives_ok(
+  $$select public.create_task_atomic('aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'Tarea creada por RPC', null, 'medium', null)$$,
+  'Task creation derives A from auth.uid()'
+);
+select is((select count(*)::integer from public.tasks where user_id = '11111111-1111-4111-8111-111111111111' and subject_id = 'aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3' and title = 'Tarea creada por RPC'), 1, 'Task is assigned to the JWT owner and its own subject');
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select throws_ok(
+  $$select public.create_task_atomic('aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'Tarea cross-user', null, 'medium', null)$$,
+  'P0001', 'INVALID_TASK_SUBJECT',
+  'Task creation rejects a subject owned by another user'
+);
+select is((select count(*)::integer from public.tasks where title = 'Tarea cross-user'), 0, 'Cross-user task creation rolls back without a new row');
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 select throws_ok(
   $$update public.notifications set title = 'Manipulada' where id = 'aaaaaaab-aaaa-4aaa-8aaa-aaaaaaaaaaab'$$,
   '42501', null,
@@ -94,6 +117,12 @@ select lives_ok(
   'A client can mark its notification as read'
 );
 select ok((select read_at is not null from public.notifications where id = 'aaaaaaab-aaaa-4aaa-8aaa-aaaaaaaaaaab'), 'Read marker was updated without changing content');
+select throws_ok(
+  $$update storage.objects set bucket_id = 'disallowed-test' where bucket_id = 'documents' and name = '11111111-1111-4111-8111-111111111111/aaaaaaa5/documento.txt'$$,
+  '42501', null,
+  'Storage UPDATE cannot move an owned object into a disallowed bucket'
+);
+select is((select bucket_id from storage.objects where name = '11111111-1111-4111-8111-111111111111/aaaaaaa5/documento.txt'), 'documents', 'Rejected Storage update leaves the original bucket unchanged');
 
 set local role service_role;
 select lives_ok(
@@ -117,6 +146,34 @@ select throws_ok(
   'A second general attendance row is rejected despite NULL subject'
 );
 
+select throws_ok(
+  $$select public.submit_quiz_atomic('11111111-1111-4111-8111-111111111111', 'aaaaaac1-aaaa-4aaa-8aaa-aaaaaaaaaac1', jsonb_build_array(jsonb_build_object('question_id', 'aaaaaab1-aaaa-4aaa-8aaa-aaaaaaaaaab1', 'answer', 'A')))$$,
+  'P0001', 'QUIZ_ANSWER_KEY_INTEGRITY_FAILED',
+  'Quiz without any answer key cannot be submitted'
+);
+select is((select count(*)::integer from public.quiz_answers where quiz_id = 'aaaaaac1-aaaa-4aaa-8aaa-aaaaaaaaaac1'), 0, 'Missing-key quiz leaves no persisted answers');
+select is((select status::text from public.quizzes where id = 'aaaaaac1-aaaa-4aaa-8aaa-aaaaaaaaaac1'), 'active', 'Missing-key quiz remains active after rollback');
+select throws_ok(
+  $$select public.submit_quiz_atomic('11111111-1111-4111-8111-111111111111', 'aaaaaac2-aaaa-4aaa-8aaa-aaaaaaaaaac2', jsonb_build_array(jsonb_build_object('question_id', 'aaaaaab2-aaaa-4aaa-8aaa-aaaaaaaaaab2', 'answer', 'A'), jsonb_build_object('question_id', 'aaaaaab3-aaaa-4aaa-8aaa-aaaaaaaaaab3', 'answer', 'A')))$$,
+  'P0001', 'QUIZ_ANSWER_KEY_INTEGRITY_FAILED',
+  'Quiz with incomplete answer keys cannot be submitted'
+);
+select is((select count(*)::integer from public.quiz_answers where quiz_id = 'aaaaaac2-aaaa-4aaa-8aaa-aaaaaaaaaac2'), 0, 'Incomplete-key quiz leaves no persisted answers');
+select is((select status::text from public.quizzes where id = 'aaaaaac2-aaaa-4aaa-8aaa-aaaaaaaaaac2'), 'active', 'Incomplete-key quiz remains active after rollback');
+select throws_ok(
+  $$select public.submit_quiz_atomic('11111111-1111-4111-8111-111111111111', 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8', jsonb_build_array(jsonb_build_object('question_id', 'aaaaaaa9-aaaa-4aaa-8aaa-aaaaaaaaaaa9', 'answer', 'A'), jsonb_build_object('question_id', 'aaaaaab4-aaaa-4aaa-8aaa-aaaaaaaaaab4', 'answer', 'A')))$$,
+  'P0001', 'QUIZ_QUESTION_OWNERSHIP_FAILED',
+  'A response question from another quiz is rejected'
+);
+select is((select count(*)::integer from public.quiz_answers where quiz_id = 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8'), 0, 'Foreign-question attempt rolls back all target answers');
+select is((select status::text from public.quizzes where id = 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8'), 'active', 'Foreign-question attempt leaves quiz active');
+select throws_ok(
+  $$select public.submit_quiz_atomic('11111111-1111-4111-8111-111111111111', 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8', jsonb_build_array(jsonb_build_object('question_id', 'aaaaaaa9-aaaa-4aaa-8aaa-aaaaaaaaaaa9', 'answer', 'A'), jsonb_build_object('question_id', 'aaaaaaa9-aaaa-4aaa-8aaa-aaaaaaaaaaa9', 'answer', 'A')))$$,
+  'P0001', 'DUPLICATE_QUIZ_ANSWERS',
+  'Duplicate response questions are rejected'
+);
+select is((select count(*)::integer from public.quiz_answers where quiz_id = 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8'), 0, 'Duplicate-response attempt rolls back all target answers');
+select is((select status::text from public.quizzes where id = 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8'), 'active', 'Duplicate-response attempt leaves quiz active');
 select throws_ok(
   $$select public.submit_quiz_atomic('11111111-1111-4111-8111-111111111111', 'aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaa8', jsonb_build_array(jsonb_build_object('question_id', 'aaaaaaa9-aaaa-4aaa-8aaa-aaaaaaaaaaa9', 'answer', 'A')))$$,
   'P0001', 'INCOMPLETE_QUIZ_ANSWERS',

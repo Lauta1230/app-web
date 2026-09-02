@@ -39,7 +39,7 @@ Para filas indirectas se atraviesa la relación segura:
 - `ai_messages` → `ai_conversations.user_id`
 - `quiz_questions` y `quiz_answers` → `quizzes.user_id`
 
-No hay políticas de insert/update/delete para `xp_transactions`, `quiz_answer_keys`, `quiz_answers`, ni `pets`. Sus mutaciones son exclusivamente service-role desde funciones que verifican JWT/ownership primero. La migración de integridad también bloquea al navegador cambios de estado/completado de tareas, creación/edición de sesiones y creación/edición de evaluaciones: esas rutas usan RPCs atómicas. `notifications` permite al navegador únicamente actualizar `read_at`. Las definiciones globales `levels`, `achievements` y `pet_items` sólo son legibles.
+No hay políticas de insert/update/delete para `xp_transactions`, `quiz_answer_keys`, `quiz_answers`, ni `pets`. Sus mutaciones son exclusivamente service-role desde funciones que verifican JWT/ownership primero. La migración de integridad bloquea al navegador la inserción directa y cambios de estado/completado de tareas: `create_task_atomic` deriva el dueño desde `auth.uid()` y `complete_task_atomic` corre desde Edge Function. También bloquea creación/edición de sesiones y evaluaciones mediante RPCs atómicas. `notifications` permite al navegador únicamente actualizar `read_at`. Las definiciones globales `levels`, `achievements` y `pet_items` sólo son legibles.
 
 ## XP y rachas
 

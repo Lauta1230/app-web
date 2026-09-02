@@ -289,7 +289,7 @@ revoke all on function public.award_xp_internal(uuid, public.xp_source, uuid, in
 -- ============================================================================
 -- SECTION 2 — P0/P1 HARDENING: tenant ownership, document path integrity,
 --             NULL-safe attendance uniqueness, restricted browser privileges,
---             server-side XP and atomic mutation RPCs.
+--             server-side task creation/XP and atomic mutation RPCs.
 -- ============================================================================
 
 -- Security and integrity hardening. This migration is additive/non-destructive:
@@ -452,15 +452,63 @@ alter table public.attendance_records
 alter table public.attendance_records
   add constraint attendance_records_logical_unique unique nulls not distinct (user_id, subject_id, attendance_date);
 
--- Browser CRUD can create/edit a task, but cannot self-mark completion or manufacture
--- completed study/exam events. Those state transitions are server-side below.
+-- The browser may edit safe task fields, but cannot insert tasks directly, choose a
+-- task owner, self-mark completion, or manufacture completed study/exam events.
+-- Task creation and every protected state transition are server-side below.
 revoke insert, update on public.tasks from anon, authenticated;
-grant insert (user_id, subject_id, title, description, priority, due_at) on public.tasks to authenticated;
 grant update (subject_id, title, description, priority, due_at) on public.tasks to authenticated;
 revoke insert, update on public.study_sessions from anon, authenticated;
 revoke insert, update on public.exams from anon, authenticated;
 revoke update on public.notifications from anon, authenticated;
 grant update (read_at) on public.notifications to authenticated;
+
+-- Keep Storage UPDATE as narrow as its SELECT/INSERT/DELETE policies. A caller cannot
+-- move an object to a different bucket or another user's folder through an update.
+drop policy if exists "private files update own folder" on storage.objects;
+create policy "private files update own folder" on storage.objects for update to authenticated
+using (
+  bucket_id in ('documents', 'avatars', 'audio')
+  and (storage.foldername(name))[1] = auth.uid()::text
+)
+with check (
+  bucket_id in ('documents', 'avatars', 'audio')
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+-- The client can request a task, but never supplies its authoritative owner. This
+-- RPC derives it from auth.uid(), validates the selected subject and inserts only a
+-- pending task. It is security definer because direct INSERT was revoked above.
+create or replace function public.create_task_atomic(
+  p_subject_id uuid,
+  p_title text,
+  p_description text,
+  p_priority public.task_priority,
+  p_due_at timestamptz
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  actor_id uuid := auth.uid();
+  task public.tasks%rowtype;
+begin
+  if actor_id is null then raise exception 'UNAUTHORIZED'; end if;
+  if char_length(trim(coalesce(p_title, ''))) not between 1 and 180 then raise exception 'INVALID_TASK_TITLE'; end if;
+  if p_description is not null and char_length(p_description) > 30000 then raise exception 'INVALID_TASK_DESCRIPTION'; end if;
+  if p_priority is null then raise exception 'INVALID_TASK_PRIORITY'; end if;
+  if p_subject_id is not null and not exists (
+    select 1 from public.subjects subject where subject.id = p_subject_id and subject.user_id = actor_id
+  ) then
+    raise exception 'INVALID_TASK_SUBJECT';
+  end if;
+  insert into public.tasks(user_id, subject_id, title, description, priority, due_at)
+  values(actor_id, p_subject_id, trim(p_title), p_description, p_priority, p_due_at)
+  returning * into task;
+  return to_jsonb(task);
+end;
+$$;
 
 -- XP reward limits are server-side circuit breakers against synthetic activity farming.
 -- They are intentionally modest and reset in the user's stored timezone.
@@ -741,8 +789,10 @@ as $$
 declare
   quiz public.quizzes%rowtype;
   question_count integer;
+  answer_key_count integer;
   submitted_count integer;
   distinct_count integer;
+  persisted_count integer;
   correct_count integer;
   score_value numeric(5,2);
   award record;
@@ -753,18 +803,49 @@ begin
   select * into quiz from public.quizzes where id = p_quiz_id and user_id = p_user_id for update;
   if not found then raise exception 'QUIZ_NOT_FOUND'; end if;
 
+  -- A quiz can only be marked complete if its question/answer-key set is complete.
+  -- quiz_answer_keys.question_id is a primary key, so this equality proves exactly
+  -- one key exists for every question in this quiz and no question is unkeyed.
   select count(*) into question_count from public.quiz_questions where quiz_id = quiz.id;
+  if question_count = 0 then raise exception 'QUIZ_HAS_NO_QUESTIONS'; end if;
+  select count(*) into answer_key_count
+  from public.quiz_questions question
+  join public.quiz_answer_keys answer_key on answer_key.question_id = question.id
+  where question.quiz_id = quiz.id;
+  if answer_key_count <> question_count then raise exception 'QUIZ_ANSWER_KEY_INTEGRITY_FAILED'; end if;
+
+  -- Validate JSON shape before UUID casts, then prove a one-to-one correspondence
+  -- between received answers and the questions belonging to this exact quiz.
+  if exists (
+    select 1 from jsonb_array_elements(p_answers) as item(value)
+    where jsonb_typeof(item.value) <> 'object'
+       or jsonb_typeof(item.value -> 'question_id') <> 'string'
+       or jsonb_typeof(item.value -> 'answer') <> 'string'
+       or char_length(item.value ->> 'answer') > 5000
+  ) then
+    raise exception 'INVALID_QUIZ_ANSWERS';
+  end if;
   select count(*), count(distinct (item.value ->> 'question_id'))
   into submitted_count, distinct_count
   from jsonb_array_elements(p_answers) as item(value);
-  if question_count = 0 or submitted_count <> question_count or distinct_count <> question_count then raise exception 'INCOMPLETE_QUIZ_ANSWERS'; end if;
+  if submitted_count <> question_count then raise exception 'INCOMPLETE_QUIZ_ANSWERS'; end if;
+  if distinct_count <> question_count then raise exception 'DUPLICATE_QUIZ_ANSWERS'; end if;
   if exists (
     select 1
     from jsonb_array_elements(p_answers) as item(value)
-    left join public.quiz_questions question on question.id = (item.value ->> 'question_id')::uuid and question.quiz_id = quiz.id
+    left join public.quiz_questions question
+      on question.id = case
+        when (item.value ->> 'question_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          then (item.value ->> 'question_id')::uuid
+        else null
+      end
+      and question.quiz_id = quiz.id
     where question.id is null
-  ) then raise exception 'QUIZ_QUESTION_OWNERSHIP_FAILED'; end if;
+  ) then
+    raise exception 'QUIZ_QUESTION_OWNERSHIP_FAILED';
+  end if;
 
+  -- Completed retries are safe only after validating the same complete answer set.
   if quiz.status = 'completed' then
     select coalesce(jsonb_agg(jsonb_build_object('question_id', answer.question_id, 'is_correct', answer.is_correct, 'feedback', answer.feedback) order by question.position), '[]'::jsonb)
     into answer_payload
@@ -773,27 +854,33 @@ begin
     return jsonb_build_object('score', quiz.score, 'correct_answers', (select count(*) from public.quiz_answers where quiz_id = quiz.id and is_correct), 'question_count', question_count, 'xp_awarded', 0, 'answers', answer_payload, 'achievements', '[]'::jsonb);
   end if;
   if quiz.status <> 'active' then raise exception 'QUIZ_NOT_ACTIVE'; end if;
+  if exists (select 1 from public.quiz_answers where quiz_id = quiz.id) then raise exception 'QUIZ_ALREADY_HAS_ANSWERS'; end if;
 
   insert into public.quiz_answers(quiz_id, question_id, answer, is_correct, feedback)
   select quiz.id,
          question.id,
          item.value ->> 'answer',
          exists (
-           select 1 from jsonb_array_elements_text(key.accepted_answers) accepted(value)
+           select 1 from jsonb_array_elements_text(answer_key.accepted_answers) accepted(value)
            where lower(regexp_replace(trim(accepted.value), '\s+', ' ', 'g')) = lower(regexp_replace(trim(item.value ->> 'answer'), '\s+', ' ', 'g'))
          ),
          case when exists (
-           select 1 from jsonb_array_elements_text(key.accepted_answers) accepted(value)
+           select 1 from jsonb_array_elements_text(answer_key.accepted_answers) accepted(value)
            where lower(regexp_replace(trim(accepted.value), '\s+', ' ', 'g')) = lower(regexp_replace(trim(item.value ->> 'answer'), '\s+', ' ', 'g'))
-         ) then '¡Correcto!' else coalesce(key.explanation, 'Repasá este concepto y volvé a intentarlo.') end
+         ) then '¡Correcto!' else coalesce(answer_key.explanation, 'Repasá este concepto y volvé a intentarlo.') end
   from jsonb_array_elements(p_answers) as item(value)
   join public.quiz_questions question on question.id = (item.value ->> 'question_id')::uuid and question.quiz_id = quiz.id
-  join public.quiz_answer_keys key on key.question_id = question.id
-  on conflict (quiz_id, question_id) do update set answer = excluded.answer, is_correct = excluded.is_correct, feedback = excluded.feedback;
+  join public.quiz_answer_keys answer_key on answer_key.question_id = question.id;
 
-  select count(*) filter (where is_correct), count(*) into correct_count, question_count from public.quiz_answers where quiz_id = quiz.id;
+  -- Recheck persisted rows before scoring. No subset can be scored or completed.
+  select count(*) filter (where is_correct), count(*)
+  into correct_count, persisted_count
+  from public.quiz_answers
+  where quiz_id = quiz.id;
+  if persisted_count <> question_count then raise exception 'QUIZ_ANSWER_PERSISTENCE_FAILED'; end if;
   score_value := round((correct_count::numeric / question_count::numeric) * 100, 2);
-  update public.quizzes set status = 'completed', score = score_value, completed_at = now() where id = quiz.id;
+  update public.quizzes set status = 'completed', score = score_value, completed_at = now() where id = quiz.id and status = 'active';
+  if not found then raise exception 'QUIZ_COMPLETION_STATE_CHANGED'; end if;
   select * into award from public.award_xp_internal(p_user_id, 'quiz_completed', quiz.id, 20 + correct_count * 5, 'Quiz completado: ' || score_value || '%');
   achievements := public.check_achievements_internal(p_user_id);
   select coalesce(jsonb_agg(jsonb_build_object('question_id', answer.question_id, 'is_correct', answer.is_correct, 'feedback', answer.feedback) order by question.position), '[]'::jsonb)
@@ -804,7 +891,11 @@ begin
 end;
 $$;
 
--- Backend-only RPCs: Edge Functions authenticate the user first, then call service_role.
+-- Task creation is callable by authenticated users but derives its actor only from
+-- auth.uid(). The remaining RPCs stay backend-only: Edge Functions authenticate the
+-- user first, then call them through service_role.
+revoke all on function public.create_task_atomic(uuid, text, text, public.task_priority, timestamptz) from public, anon, authenticated;
+grant execute on function public.create_task_atomic(uuid, text, text, public.task_priority, timestamptz) to authenticated;
 grant execute on function public.check_achievements_internal(uuid) to service_role;
 grant execute on function public.complete_task_atomic(uuid, uuid) to service_role;
 grant execute on function public.complete_study_session_atomic(uuid, uuid, timestamptz, integer, public.study_mode) to service_role;
