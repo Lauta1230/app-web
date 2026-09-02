@@ -53,4 +53,8 @@ jobs:
           status=${PIPESTATUS[0]}
           set -e
           cat /tmp/database-security.log >> "$GITHUB_STEP_SUMMARY"
+          if (( status != 0 )); then
+            summary=$(tr '\n' ' ' < /tmp/database-security.log | cut -c1-6000)
+            echo "::error title=Database security test output::$summary"
+          fi
           exit "$status"
