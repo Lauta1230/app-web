@@ -85,7 +85,7 @@ No se crea, pega, revela ni guarda ningún token en este repositorio. Si el secr
 
 El workflow:
 
-1. comprueba que el inventario local sea exactamente las 15 Functions autorizadas, que cada una tenga el guard de autenticación manual y que coincida con la configuración JWT;
+1. instala las dependencias exactas del lockfile con `npm ci`, comprueba que el inventario local sea exactamente las 15 Functions autorizadas, que cada una tenga el guard de autenticación manual y que coincida con la configuración JWT;
 2. ejecuta `deno check` para los 15 entrypoints;
 3. verifica que `SUPABASE_ACCESS_TOKEN` y `FRONTEND_ORIGIN` estén presentes sin mostrar valores;
 4. usa Supabase CLI `2.116.0` y `--use-api` para publicar una por una las 15 Functions contra el project ref fijado;
