@@ -13,7 +13,7 @@ Deno.serve(async (request) => {
       auth.admin.from('profiles').select('display_name,education_level,ai_personality,onboarding_completed').eq('id', auth.user.id).single(),
       auth.admin.from('streaks').select('current_streak,longest_streak,last_activity_date').eq('user_id', auth.user.id).maybeSingle(),
       auth.admin.from('pets').select('id,name,species,level,happiness,energy').eq('user_id', auth.user.id).maybeSingle(),
-      auth.admin.from('xp_transactions').select('amount'),
+      auth.admin.from('xp_transactions').select('amount').eq('user_id', auth.user.id),
       auth.admin.from('tasks').select('id,title,priority,due_at,status,subject_id,subjects(name,color)').eq('user_id', auth.user.id).eq('status', 'pending').lt('due_at', tomorrow.toISOString()).order('due_at').limit(6),
       auth.admin.from('calendar_events').select('id,title,event_type,starts_at,duration_minutes,subject_id,subjects(name,color)').eq('user_id', auth.user.id).gte('starts_at', todayStart.toISOString()).lt('starts_at', tomorrow.toISOString()).order('starts_at').limit(6),
       auth.admin.from('study_sessions').select('id,started_at,ended_at,duration_seconds,mode,completed,subject_id').eq('user_id', auth.user.id).gte('started_at', todayStart.toISOString()).order('started_at'),

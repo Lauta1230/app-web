@@ -8,9 +8,11 @@ Deno.serve(async (request) => {
   const preflight = options(request); if (preflight) return preflight
   if (request.method !== 'POST') return fail('INVALID_INPUT', 'Método no permitido.', 405)
   let documentId: string | null = null
+  let userId: string | null = null
   let admin: SupabaseClient | null = null
   try {
     const auth = await requireUser(request); if (isResponse(auth)) return auth
+    userId = auth.user.id
     admin = auth.admin
     const input = await jsonBody<Input>(request)
     if (!input.document_id) throw new InputError('Elegí un documento para escanear.')
@@ -30,7 +32,7 @@ Deno.serve(async (request) => {
     if (updateError) throw updateError
     return ok({ document: updated, requires_confirmation: true })
   } catch (error) {
-    if (documentId && admin) await admin.from('documents').update({ processing_status: 'failed', error_message: 'No pudimos analizar el archivo. Podés reintentar.' }).eq('id', documentId)
+    if (documentId && userId && admin) await admin.from('documents').update({ processing_status: 'failed', error_message: 'No pudimos analizar el archivo. Podés reintentar.' }).eq('id', documentId).eq('user_id', userId)
     const message = error instanceof Error ? error.message : ''
     if (message === 'AI_UNAVAILABLE') return fail('AI_UNAVAILABLE', 'No pudimos analizar el documento ahora. Tu archivo sigue guardado y podés reintentar.', 503)
     if (message === 'AI_RATE_LIMIT') return fail('AI_RATE_LIMIT', 'La IA alcanzó temporalmente su límite gratuito. Intentá nuevamente más tarde.', 429)

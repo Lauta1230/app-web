@@ -22,6 +22,23 @@ jobs:
       - run: npm run test
       - run: npm run build
 
+  edge-functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.6.1
+      - name: Verify approved Function inventory and authentication guard
+        run: bash scripts/check-edge-functions.sh
+      - name: Type-check all approved Edge Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r entrypoint; do
+            deno check --no-lock "$entrypoint"
+          done < <(bash scripts/check-edge-functions.sh --print-entrypoints)
+
   migration-review:
     runs-on: ubuntu-latest
     steps:
