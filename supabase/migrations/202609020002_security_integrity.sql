@@ -397,6 +397,11 @@ declare
 begin
   if p_duration_seconds < 60 or p_duration_seconds > 86400 then raise exception 'INVALID_SESSION_DURATION'; end if;
   if p_started_at > now() or p_started_at + make_interval(secs => p_duration_seconds) > now() + interval '2 minutes' then raise exception 'INVALID_SESSION_TIME'; end if;
+  if p_subject_id is not null and not exists (
+    select 1 from public.subjects subject where subject.id = p_subject_id and subject.user_id = p_user_id
+  ) then
+    raise exception 'INVALID_SESSION_SUBJECT';
+  end if;
   insert into public.study_sessions(user_id, subject_id, started_at, ended_at, duration_seconds, mode, completed)
   values(p_user_id, p_subject_id, p_started_at, now(), p_duration_seconds, p_mode, true)
   returning id into session_id;
@@ -431,6 +436,11 @@ begin
   if p_grade is not null and (p_max_grade is null or p_max_grade <= 0 or p_grade < 0) then raise exception 'INVALID_EXAM_GRADE'; end if;
   if p_grade is null then p_max_grade := null; end if;
   if p_passing_percentage is null or p_passing_percentage < 0 or p_passing_percentage > 100 then raise exception 'INVALID_PASSING_PERCENTAGE'; end if;
+  if p_subject_id is not null and not exists (
+    select 1 from public.subjects subject where subject.id = p_subject_id and subject.user_id = p_user_id
+  ) then
+    raise exception 'INVALID_EXAM_SUBJECT';
+  end if;
 
   if p_exam_id is null then
     insert into public.exams(user_id, subject_id, title, scheduled_at, grade, max_grade, passing_percentage, notes)

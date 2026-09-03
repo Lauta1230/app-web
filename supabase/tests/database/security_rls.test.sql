@@ -1,5 +1,5 @@
 begin;
-select plan(55);
+select plan(62);
 
 -- Seed two real auth identities. The profile/streak trigger from the migration creates
 -- their tenant roots; all test data remains inside this transaction and is rolled back.
@@ -94,6 +94,10 @@ select throws_ok(
   'Authenticated clients cannot insert arbitrary XP'
 );
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+select ok(
+  to_regprocedure('public.create_task_atomic(uuid,text,text,public.task_priority,timestamp with time zone)') is not null,
+  'create_task_atomic exists with no user_id parameter'
+);
 select lives_ok(
   $$select public.create_task_atomic('aaaaaaa3-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'Tarea creada por RPC', null, 'medium', null)$$,
   'Task creation derives A from auth.uid()'
@@ -123,8 +127,25 @@ select throws_ok(
   'Storage UPDATE cannot move an owned object into a disallowed bucket'
 );
 select is((select bucket_id from storage.objects where name = '11111111-1111-4111-8111-111111111111/aaaaaaa5/documento.txt'), 'documents', 'Rejected Storage update leaves the original bucket unchanged');
+select lives_ok(
+  $$update storage.objects set name = '11111111-1111-4111-8111-111111111111/aaaaaaa5/documento-renombrado.txt' where bucket_id = 'documents' and name = '11111111-1111-4111-8111-111111111111/aaaaaaa5/documento.txt'$$,
+  'Storage UPDATE inside an allowed bucket and owner folder succeeds'
+);
+select is((select bucket_id from storage.objects where name = '11111111-1111-4111-8111-111111111111/aaaaaaa5/documento-renombrado.txt'), 'documents', 'Allowed Storage update preserves an allowed bucket');
 
 set local role service_role;
+select throws_ok(
+  $$select public.complete_study_session_atomic('11111111-1111-4111-8111-111111111111', 'bbbbbbb3-bbbb-4bbb-8bbb-bbbbbbbbbbb3', now() - interval '5 minutes', 300, 'free_study')$$,
+  'P0001', 'INVALID_SESSION_SUBJECT',
+  'Study session rejects a subject owned by another user before insertion'
+);
+select is((select count(*)::integer from public.study_sessions where user_id = '11111111-1111-4111-8111-111111111111'), 0, 'Rejected study session leaves no persisted row');
+select throws_ok(
+  $$select public.save_exam_atomic('11111111-1111-4111-8111-111111111111', null, 'Evaluación cross-user', 'bbbbbbb3-bbbb-4bbb-8bbb-bbbbbbbbbbb3', null, null, null, 60, null)$$,
+  'P0001', 'INVALID_EXAM_SUBJECT',
+  'Exam save rejects a subject owned by another user before insertion'
+);
+select is((select count(*)::integer from public.exams where user_id = '11111111-1111-4111-8111-111111111111'), 0, 'Rejected exam save leaves no persisted row');
 select lives_ok(
   $$select public.complete_task_atomic('11111111-1111-4111-8111-111111111111', 'aaaaaaa6-aaaa-4aaa-8aaa-aaaaaaaaaaa6')$$,
   'Server completion is allowed'
