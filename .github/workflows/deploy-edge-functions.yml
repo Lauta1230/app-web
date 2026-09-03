@@ -1,0 +1,94 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# This workflow is deliberately manual. It deploys only the reviewed inventory below
+# to the fixed production project and never configures runtime secrets.
+env:
+  SUPABASE_PROJECT_REF: jqogsofwodvgfqvbpcza
+
+jobs:
+  validate:
+    name: Validate Edge Functions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.6.1
+      - name: Verify approved Function inventory and authentication guard
+        run: bash scripts/check-edge-functions.sh
+      - name: Type-check all approved Edge Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r entrypoint; do
+            deno check --no-lock "$entrypoint"
+          done < <(bash scripts/check-edge-functions.sh --print-entrypoints)
+
+  deploy:
+    name: Deploy approved Edge Functions
+    needs: validate
+    runs-on: ubuntu-latest
+    # Configure this environment with required reviewers and an environment-scoped
+    # SUPABASE_ACCESS_TOKEN before dispatching. The workflow cannot deploy without it.
+    environment: supabase-production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require deployment credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+            echo 'SUPABASE_ACCESS_TOKEN must be configured as the supabase-production environment secret.' >&2
+            exit 1
+          fi
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+      - name: Require production CORS origin configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! supabase secrets list --project-ref "$SUPABASE_PROJECT_REF" --output env | awk -F= '$1 == "FRONTEND_ORIGIN" { found = 1 } END { exit !found }'; then
+            echo 'FRONTEND_ORIGIN is not configured for the target project. Configure its exact HTTPS origin before deployment.' >&2
+            exit 1
+          fi
+      - name: Deploy the reviewed Function inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r function_name; do
+            echo "Deploying ${function_name}"
+            supabase functions deploy "$function_name" \
+              --project-ref "$SUPABASE_PROJECT_REF" \
+              --no-verify-jwt \
+              --use-api
+          done < <(bash scripts/check-edge-functions.sh --print-names)
+      - name: Publish deployment summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Supabase Edge Functions deployed'
+            echo
+            echo "Project: \`${SUPABASE_PROJECT_REF}\`"
+            echo
+            echo 'Functions:'
+            while IFS= read -r function_name; do
+              echo "- \`${function_name}\`"
+            done < <(bash scripts/check-edge-functions.sh --print-names)
+            echo
+            echo 'No runtime secrets were created or changed by this workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"

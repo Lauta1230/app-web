@@ -1,0 +1,2 @@
+-- DEVELOPMENT ONLY. Intentionally empty: no demo academic records are inserted for real users.
+-- Add disposable local fixtures here if required; never apply this file to production.

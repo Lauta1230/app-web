@@ -1,0 +1,180 @@
+name: Quality
+
+on:
+  push:
+    branches: [main, arena/01a06424-app-web]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+
+  edge-functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.6.1
+      - name: Verify approved Function inventory and authentication guard
+        run: bash scripts/check-edge-functions.sh
+      - name: Type-check all approved Edge Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r entrypoint; do
+            deno check --no-lock "$entrypoint"
+          done < <(bash scripts/check-edge-functions.sh --print-entrypoints)
+
+  migration-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject committed frontend secrets
+        run: |
+          ! grep -R --include='*.ts' --include='*.tsx' --include='*.js' -nE 'VITE_GEMINI_API_KEY|SUPABASE_SERVICE_ROLE_KEY|GEMINI_API_KEY' src || exit 1
+      - name: Confirm schema has row-level security
+        run: grep -q 'enable row level security' supabase/migrations/202609020001_initial_schema.sql
+      - name: Reject permissive Edge Function CORS
+        run: "! grep -R -nE 'Access-Control-Allow-Origin.*\\*' supabase/functions"
+      - name: Verify standalone deploy script has no secret configuration
+        run: "! grep -nE 'GEMINI_API_KEY|SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ACCESS_TOKEN|SUPABASE_DB_PASSWORD' supabase/deploy/REMOTE_DEPLOY.sql"
+      - name: Verify standalone deploy script renders both ordered migrations
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          deploy = Path('supabase/deploy/REMOTE_DEPLOY.sql').read_text()
+          initial = Path('supabase/migrations/202609020001_initial_schema.sql').read_text()
+          hardening = Path('supabase/migrations/202609020002_security_integrity.sql').read_text()
+          assert initial in deploy, 'Initial schema migration is not fully rendered in deployment SQL.'
+          assert hardening in deploy, 'P0/P1 hardening migration is not fully rendered in deployment SQL.'
+          assert deploy.index(initial) < deploy.index(hardening), 'Migrations are in the wrong deployment order.'
+          print('Standalone deployment SQL contains both migrations in order.')
+          PY
+
+  database-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start an empty local Supabase stack
+        shell: bash
+        run: |
+          # `supabase start` applies repository migrations on a fresh volume. Temporarily
+          # move them aside so the standalone SQL is exercised against only Supabase's
+          # platform schemas (auth/storage), then restore them for the migration test.
+          set -euo pipefail
+          workdir=$(mktemp -d)
+          mv supabase/migrations "$workdir/migrations"
+          trap 'if [[ -d "$workdir/migrations" ]]; then mv "$workdir/migrations" supabase/migrations; fi' EXIT
+          supabase start
+          mv "$workdir/migrations" supabase/migrations
+          trap - EXIT
+      - name: Validate standalone SQL deployment on the empty stack
+        shell: bash
+        run: |
+          set -o pipefail
+          set +e
+          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -v ON_ERROR_STOP=1 -f supabase/deploy/REMOTE_DEPLOY.sql 2>&1 | tee /tmp/standalone-deploy.log
+          status=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/standalone-deploy.log >> "$GITHUB_STEP_SUMMARY"
+          if (( status != 0 )); then
+            summary=$(tr '\n' ' ' < /tmp/standalone-deploy.log | cut -c1-6000)
+            echo "::error title=Standalone deployment SQL output::$summary"
+            exit "$status"
+          fi
+          supabase test db --local
+      - name: Assert standalone deployment objects exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' -v ON_ERROR_STOP=1 <<'SQL'
+          do $$
+          declare
+            expected_policy record;
+          begin
+            if (select count(*) from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relrowsecurity) <> 24 then
+              raise exception 'Expected RLS on all 24 Companion Study public tables';
+            end if;
+            if exists (
+              select 1 from unnest(array[
+                'public.award_xp_internal(uuid,public.xp_source,uuid,integer,text)',
+                'public.create_task_atomic(uuid,text,text,public.task_priority,timestamp with time zone)',
+                'public.check_achievements_internal(uuid)',
+                'public.complete_task_atomic(uuid,uuid)',
+                'public.complete_study_session_atomic(uuid,uuid,timestamp with time zone,integer,public.study_mode)',
+                'public.save_exam_atomic(uuid,uuid,text,uuid,timestamp with time zone,numeric,numeric,numeric,text)',
+                'public.award_xp_for_verified_event_atomic(uuid,public.xp_source,uuid)',
+                'public.submit_quiz_atomic(uuid,uuid,jsonb)'
+              ]) signature
+              where to_regprocedure(signature) is null
+            ) then
+              raise exception 'Expected XP/atomic RPC is missing';
+            end if;
+            for expected_policy in
+              select * from (values
+                ('public', 'profiles', 'profile owner'),
+                ('public', 'subjects', 'subject owner'),
+                ('public', 'documents', 'document owner'),
+                ('public', 'tasks', 'task owner'),
+                ('public', 'exams', 'exam owner'),
+                ('public', 'attendance_records', 'attendance owner'),
+                ('public', 'quizzes', 'quiz owner'),
+                ('public', 'xp_transactions', 'xp readable own'),
+                ('public', 'notifications', 'notification read own'),
+                ('storage', 'objects', 'private files select own folder'),
+                ('storage', 'objects', 'private files insert own folder'),
+                ('storage', 'objects', 'private files update own folder'),
+                ('storage', 'objects', 'private files delete own folder')
+              ) as policies(schema_name, table_name, policy_name)
+            loop
+              if not exists (
+                select 1 from pg_policies
+                where schemaname = expected_policy.schema_name
+                  and tablename = expected_policy.table_name
+                  and policyname = expected_policy.policy_name
+              ) then
+                raise exception 'Missing RLS policy %.%.%', expected_policy.schema_name, expected_policy.table_name, expected_policy.policy_name;
+              end if;
+            end loop;
+          end;
+          $$;
+          SQL
+      - name: Reset local database and apply migrations in normal order
+        run: supabase db reset --local
+      - name: Exercise RLS and atomic XP protections through migrations
+        shell: bash
+        run: |
+          set -o pipefail
+          set +e
+          supabase test db --local 2>&1 | tee /tmp/database-security.log
+          status=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/database-security.log >> "$GITHUB_STEP_SUMMARY"
+          if (( status != 0 )); then
+            summary=$(tr '\n' ' ' < /tmp/database-security.log | cut -c1-6000)
+            echo "::error title=Database security test output::$summary"
+          fi
+          exit "$status"
