@@ -280,7 +280,15 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 on conflict (id) do nothing;
 create policy "private files select own folder" on storage.objects for select to authenticated using (bucket_id in ('documents','avatars','audio') and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "private files insert own folder" on storage.objects for insert to authenticated with check (bucket_id in ('documents','avatars','audio') and (storage.foldername(name))[1] = auth.uid()::text);
-create policy "private files update own folder" on storage.objects for update to authenticated using (bucket_id in ('documents','avatars','audio') and (storage.foldername(name))[1] = auth.uid()::text) with check ((storage.foldername(name))[1] = auth.uid()::text);
+create policy "private files update own folder" on storage.objects for update to authenticated
+using (
+  bucket_id in ('documents', 'avatars', 'audio')
+  and (storage.foldername(name))[1] = auth.uid()::text
+)
+with check (
+  bucket_id in ('documents', 'avatars', 'audio')
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 create policy "private files delete own folder" on storage.objects for delete to authenticated using (bucket_id in ('documents','avatars','audio') and (storage.foldername(name))[1] = auth.uid()::text);
 
 grant execute on function public.award_xp_internal(uuid, public.xp_source, uuid, integer, text) to service_role;
