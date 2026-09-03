@@ -2,7 +2,7 @@
 
 Este procedimiento prepara **solamente** el deployment de las Edge Functions al proyecto Supabase `jqogsofwodvgfqvbpcza`. No aplica migraciones SQL, no modifica secretos del proyecto y no habilita facturación ni proveedores pagos.
 
-El workflow [`.github/workflows/deploy-edge-functions.yml`](../.github/workflows/deploy-edge-functions.yml) es manual (`workflow_dispatch`) para que un push nunca publique una Function por accidente. Despliega únicamente el inventario revisado y no usa `--prune`, por lo que tampoco borra Functions remotas fuera de ese inventario.
+El workflow [`.github/workflows/deploy-edge-functions.yml`](../.github/workflows/deploy-edge-functions.yml) es manual (`workflow_dispatch`) para que un push nunca publique una Function por accidente. Despliega únicamente el inventario revisado y no usa `--prune`, por lo que tampoco borra Functions remotas fuera de ese inventario. GitHub habilita el despacho manual de un workflow cuando el archivo ya está en la rama por defecto: integrar este cambio a la rama por defecto no despliega nada, sólo deja disponible el botón **Run workflow** protegido.
 
 ## Estado de revisión
 
@@ -77,11 +77,12 @@ No se crea, pega, revela ni guarda ningún token en este repositorio. Si el secr
 
 ## Ejecución reproducible
 
-1. Un administrador crea/protege el GitHub Environment `supabase-production`, configura revisores requeridos y agrega allí únicamente `SUPABASE_ACCESS_TOKEN`.
-2. Un administrador configura `FRONTEND_ORIGIN` con el origen HTTPS real en el proyecto `jqogsofwodvgfqvbpcza`.
-3. No configurar `GEMINI_API_KEY` en esta etapa.
-4. En GitHub Actions, seleccionar **Deploy Supabase Edge Functions** y usar **Run workflow** desde el commit revisado.
-5. Aprobar el Environment cuando GitHub lo solicite.
+1. Integrar el commit revisado a la rama por defecto. Esto no ejecuta deployment porque el workflow no escucha `push`; sólo habilita el despacho manual en GitHub Actions.
+2. Un administrador crea/protege el GitHub Environment `supabase-production`, configura revisores requeridos y agrega allí únicamente `SUPABASE_ACCESS_TOKEN`.
+3. Un administrador configura `FRONTEND_ORIGIN` con el origen HTTPS real en el proyecto `jqogsofwodvgfqvbpcza`.
+4. No configurar `GEMINI_API_KEY` en esta etapa.
+5. En GitHub Actions, seleccionar **Deploy Supabase Edge Functions** y usar **Run workflow** desde el commit revisado que ya está en la rama por defecto.
+6. Aprobar el Environment cuando GitHub lo solicite.
 
 El workflow:
 
@@ -94,6 +95,7 @@ El workflow:
 
 ## Faltantes actuales para desplegar
 
+- Este cambio debe integrarse a la rama por defecto antes de que GitHub habilite el despacho manual del workflow.
 - El secret de Environment `SUPABASE_ACCESS_TOKEN` debe ser creado y cargado por un administrador de Supabase/GitHub.
 - `FRONTEND_ORIGIN` debe estar configurada con el origen HTTPS final del frontend.
 - `GEMINI_API_KEY` permanece deliberadamente sin configurar. No bloquea el deployment, pero deja degradadas de forma segura las cinco rutas de IA indicadas arriba.
