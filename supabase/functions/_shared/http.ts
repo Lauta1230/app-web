@@ -11,7 +11,7 @@ export const corsHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
 }
 
-export type ApiErrorCode = 'UNAUTHORIZED' | 'INVALID_INPUT' | 'NOT_FOUND' | 'FORBIDDEN' | 'AI_RATE_LIMIT' | 'AI_UNAVAILABLE' | 'PROCESSING_FAILED' | 'INTERNAL_ERROR'
+export type ApiErrorCode = 'UNAUTHORIZED' | 'INVALID_INPUT' | 'NOT_FOUND' | 'FORBIDDEN' | 'AI_RATE_LIMIT' | 'AI_UNAVAILABLE' | 'DASHBOARD_UNAVAILABLE' | 'PROCESSING_FAILED' | 'INTERNAL_ERROR'
 
 export function ok(data: unknown, status = 200): Response {
   return new Response(JSON.stringify({ success: true, data }), { status, headers: corsHeaders })

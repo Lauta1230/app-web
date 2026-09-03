@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { friendlyError } from './errors'
+import { AppError, friendlyError } from './errors'
 
 describe('friendlyError', () => {
   it('never passes technical auth messages through to a student', () => {
@@ -7,5 +7,8 @@ describe('friendlyError', () => {
   })
   it('uses a helpful connection fallback', () => {
     expect(friendlyError(new Error('fetch failed'))).toContain('conectarnos')
+  })
+  it('maps DASHBOARD_UNAVAILABLE to a safe, retryable message', () => {
+    expect(friendlyError(new AppError('DASHBOARD_UNAVAILABLE', 'raw'))).toContain('panel')
   })
 })

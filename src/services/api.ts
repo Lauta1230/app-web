@@ -59,6 +59,10 @@ export const attendanceApi = {
   async save(userId: string, payload: Omit<Attendance, 'id' | 'subjects'>): Promise<Attendance> { ready(); const { data, error } = await supabase.from('attendance_records').upsert({ ...payload, user_id: userId }, { onConflict: 'user_id,subject_id,attendance_date' }).select().single(); check(error); return data as Attendance }
 }
 
+export const petsApi = {
+  async get(): Promise<Pet | null> { ready(); const { data, error } = await supabase.from('pets').select('id,name,species,level,happiness,energy').maybeSingle(); check(error); return data as Pet | null }
+}
+
 export const appApi = {
   dashboard: (): Promise<DashboardData> => invoke<DashboardData>('dashboard'),
   recommend: () => invoke<{ recommendation: DashboardData['recommendation'] }>('study-recommendation'),
