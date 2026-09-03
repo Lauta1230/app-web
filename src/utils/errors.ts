@@ -1,5 +1,6 @@
 export function friendlyError(error: unknown, fallback = 'No pudimos completar la operación. Revisá tu conexión e intentá nuevamente.'): string {
   const raw = error instanceof Error ? error.message : ''
+  if (raw === 'DASHBOARD_UNAVAILABLE' || (error instanceof AppError && error.code === 'DASHBOARD_UNAVAILABLE')) return 'El panel no está disponible en este momento. Tus datos están a salvo; reintentá en unos minutos.'
   if (raw === 'CONFIGURATION_REQUIRED') return 'Configurá Supabase para comenzar a usar tu cuenta.'
   if (/invalid login credentials/i.test(raw)) return 'El email o la contraseña no son correctos.'
   if (/email not confirmed/i.test(raw)) return 'Confirmá tu email antes de ingresar.'
