@@ -8,7 +8,7 @@ Aplicación PWA de estudio personal: organización académica, tutor con IA, qui
 
 - React 18, TypeScript estricto, Vite y Tailwind CSS (con estilos académicos propios).
 - Supabase: Auth, PostgreSQL, RLS, Storage y Edge Functions (Deno).
-- Gemini `gemini-2.5-flash-lite`, únicamente desde Edge Functions.
+- Gemini `gemini-3.5-flash-lite`, únicamente desde Edge Functions.
 - Web Speech API del dispositivo para texto a voz y dictado (con entrada por teclado como fallback).
 - PWA mediante `vite-plugin-pwa`.
 
