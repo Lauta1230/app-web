@@ -11,7 +11,7 @@ type GeminiResponse = { candidates?: Array<{ content?: { parts?: Array<{ text?: 
 
 export class GeminiProvider implements AIProvider {
   private readonly key = Deno.env.get('GEMINI_API_KEY')
-  private readonly model = 'gemini-2.5-flash-lite'
+  private readonly model = 'gemini-3.5-flash-lite'
 
   private async request(contents: unknown[], config: Record<string, unknown> = {}): Promise<GeminiResponse> {
     if (!this.key) { console.error('Gemini not configured: GEMINI_API_KEY missing'); throw new Error('AI_UNAVAILABLE') }

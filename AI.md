@@ -2,7 +2,7 @@
 
 ## Gemini sin secreto en cliente
 
-El modelo configurado es `gemini-2.5-flash-lite`. `GEMINI_API_KEY` se lee sólo desde el entorno Deno de Supabase. `src/lib/ai/GeminiProvider` **no** es un SDK Gemini: es un adaptador seguro hacia funciones.
+El modelo configurado es `gemini-3.5-flash-lite`. `GEMINI_API_KEY` se lee sólo desde el entorno Deno de Supabase. `src/lib/ai/GeminiProvider` **no** es un SDK Gemini: es un adaptador seguro hacia funciones.
 
 Configuración:
 
