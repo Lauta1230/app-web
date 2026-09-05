@@ -7,25 +7,36 @@ export interface AIProvider {
   analyzeDocument(data: Uint8Array, mimeType: string, prompt: string): Promise<string>
 }
 
-type GeminiResponse = { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; error?: { message?: string; status?: string } }
+type GeminiResponse = { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>; promptFeedback?: { blockReason?: string }; error?: { message?: string; status?: string } }
 
 export class GeminiProvider implements AIProvider {
   private readonly key = Deno.env.get('GEMINI_API_KEY')
   private readonly model = 'gemini-2.5-flash-lite'
 
   private async request(contents: unknown[], config: Record<string, unknown> = {}): Promise<GeminiResponse> {
-    if (!this.key) throw new Error('AI_UNAVAILABLE')
+    if (!this.key) { console.error('Gemini not configured: GEMINI_API_KEY missing'); throw new Error('AI_UNAVAILABLE') }
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.key}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents, generationConfig: config })
     })
     if (response.status === 429) throw new Error('AI_RATE_LIMIT')
-    if (!response.ok) { console.error('Gemini request failed', response.status); throw new Error('AI_UNAVAILABLE') }
+    if (!response.ok) {
+      // TEMP diagnostics: log only the HTTP status and sanitized Gemini error fields.
+      // Never log the URL (it carries the key), headers, or the request body.
+      const detail = await response.json().catch(() => null) as GeminiResponse | null
+      const safeMessage = (detail?.error?.message ?? '').split(this.key).join('[REDACTED]').slice(0, 300)
+      console.error('Gemini request failed', { operation: 'generateContent', model: this.model, httpStatus: response.status, errorStatus: detail?.error?.status, errorMessage: safeMessage })
+      throw new Error('AI_UNAVAILABLE')
+    }
     return await response.json() as GeminiResponse
   }
 
   private text(response: GeminiResponse): string {
     const value = response.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim()
-    if (!value) throw new Error('AI_UNAVAILABLE')
+    if (!value) {
+      // TEMP diagnostics: Gemini returned HTTP 200 but no usable text (e.g. blocked or empty completion).
+      console.error('Gemini response without text', { operation: 'generateContent', model: this.model, finishReason: response.candidates?.[0]?.finishReason, blockReason: response.promptFeedback?.blockReason })
+      throw new Error('AI_UNAVAILABLE')
+    }
     return value
   }
 
