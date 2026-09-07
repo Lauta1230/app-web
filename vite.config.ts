@@ -35,6 +35,7 @@ export default defineConfig({
         theme_color: '#121620',
         background_color: '#121620',
         display: 'standalone',
+        scope: '/',
         start_url: '/app',
         lang: 'es-AR',
         icons: [
