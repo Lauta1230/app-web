@@ -1,10 +1,14 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   server: { host: '0.0.0.0', allowedHosts: true },
   preview: { host: '0.0.0.0', allowedHosts: true },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+  },
   build: {
     rollupOptions: {
       output: {
@@ -13,6 +17,7 @@ export default defineConfig({
           if (id.includes('react') || id.includes('scheduler')) return 'react-vendor'
           if (id.includes('@supabase')) return 'supabase-vendor'
           if (id.includes('lucide-react')) return 'icons-vendor'
+          if (id.includes('katex') || id.includes('marked')) return 'katex-vendor'
           return 'vendor'
         }
       }
